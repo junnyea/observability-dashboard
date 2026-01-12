@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, ScrollText, BarChart3, Activity, LogOut } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import EnvironmentSwitcher from '../Environment/EnvironmentSwitcher'
 
 export default function MainLayout({ children }) {
   const { user, logout } = useAuth()
@@ -11,6 +12,11 @@ export default function MainLayout({ children }) {
         ? 'bg-blue-600 text-white'
         : 'text-gray-600 hover:bg-gray-100'
     }`
+
+  const handleEnvironmentChange = (newEnv) => {
+    // Refresh the page to reload data for new environment
+    window.location.reload()
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -36,6 +42,7 @@ export default function MainLayout({ children }) {
               </NavLink>
             </div>
             <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+              <EnvironmentSwitcher onEnvironmentChange={handleEnvironmentChange} />
               <span className="text-sm text-gray-600">{user?.username}</span>
               <button
                 onClick={logout}

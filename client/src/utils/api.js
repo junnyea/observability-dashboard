@@ -30,3 +30,24 @@ export async function getDashboardInfo() {
   const res = await api.get('/info')
   return res.data
 }
+
+// Environment API functions
+export async function getEnvironment() {
+  const res = await api.get('/environment')
+  return res.data
+}
+
+export async function switchEnvironment(environment) {
+  const res = await api.post('/environment/switch', { environment })
+  return res.data
+}
+
+export async function getDatabaseStatus() {
+  const res = await api.get('/environment/database')
+  return res.data
+}
+
+export async function getAllDatabaseStatus() {
+  const res = await api.get('/environment/database/all')
+  return res.data
+}

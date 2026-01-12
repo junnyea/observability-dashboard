@@ -7,13 +7,25 @@ const cors = require('cors');
 const path = require('path');
 
 const config = require('./config/services');
+const { getEnvironment, setEnvironment, getAllEnvironments } = require('./config/environments');
+const { closeAll: closeDbPools, testConnection } = require('./db/pool');
 const LogTailer = require('./services/log-tailer');
 const HealthMonitor = require('./services/health-monitor');
 const { setupLogSocket, setupHealthSocket } = require('./sockets/log-stream');
 const healthRoutes = require('./routes/health');
 const metricsRoutes = require('./routes/metrics');
 const logsRoutes = require('./routes/logs');
+const environmentRoutes = require('./routes/environment');
 const { router: authRoutes, authMiddleware, AUTH_TOKEN } = require('./routes/auth');
+
+// Set initial environment from NODE_ENV
+const initialEnv = process.env.NODE_ENV || 'DEV';
+try {
+  setEnvironment(initialEnv);
+} catch (e) {
+  console.warn(`Invalid NODE_ENV "${initialEnv}", defaulting to DEV`);
+  setEnvironment('DEV');
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -38,7 +50,12 @@ setupHealthSocket(io, healthMonitor);
 
 // Health check (unprotected)
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'observability-dashboard', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'ok',
+    service: 'observability-dashboard',
+    environment: getEnvironment(),
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Auth routes (unprotected)
@@ -48,13 +65,20 @@ app.use('/api/auth', authRoutes);
 app.use('/api/health', authMiddleware, healthRoutes(healthMonitor));
 app.use('/api/metrics', authMiddleware, metricsRoutes);
 app.use('/api/logs', authMiddleware, logsRoutes);
+app.use('/api/environment', authMiddleware, environmentRoutes(healthMonitor));
 
 // Dashboard info endpoint (protected)
 app.get('/api/info', authMiddleware, (req, res) => {
   res.json({
     name: 'Bulwark Observability Dashboard',
-    version: '1.0.0',
-    services: config.services.map(s => ({ name: s.name, port: s.port })),
+    version: '2.0.0',
+    environment: getEnvironment(),
+    environments: getAllEnvironments(),
+    services: config.services.map(s => ({
+      name: s.name,
+      port: s.port,
+      awsUrl: s.awsUrl
+    })),
     uptime: process.uptime()
   });
 });
@@ -77,25 +101,48 @@ logTailer.start();
 healthMonitor.start();
 
 const PORT = config.dashboardPort;
-server.listen(PORT, () => {
-  console.log('========================================');
-  console.log('  Bulwark Observability Dashboard');
-  console.log('========================================');
-  console.log(`  URL: http://localhost:${PORT}`);
-  console.log(`  API: http://localhost:${PORT}/api`);
+server.listen(PORT, async () => {
+  const env = getEnvironment();
+  const dbStatus = await testConnection();
+
   console.log('');
-  console.log('  Monitoring services:');
+  console.log('==========================================');
+  console.log('   Bulwark Observability Dashboard v2.0');
+  console.log('==========================================');
+  console.log(`   Environment: ${env}`);
+  console.log(`   URL: http://localhost:${PORT}`);
+  console.log(`   API: http://localhost:${PORT}/api`);
+  console.log('');
+  console.log('   Database:');
+  console.log(`     Status: ${dbStatus.connected ? 'Connected' : 'Not Connected'}`);
+  if (dbStatus.connected) {
+    console.log(`     Database: ${dbStatus.database}`);
+  } else {
+    console.log(`     Error: ${dbStatus.error}`);
+  }
+  console.log('');
+  console.log('   Monitoring services:');
   config.services.forEach(s => {
-    console.log(`    - ${s.name} (port ${s.port})`);
+    const localInfo = s.port ? `local:${s.port}` : 'no local';
+    const awsInfo = s.awsUrl ? 'AWS configured' : 'no AWS';
+    console.log(`     - ${s.name} (${localInfo}, ${awsInfo})`);
   });
-  console.log('========================================');
+  console.log('');
+  console.log('   Available environments:');
+  getAllEnvironments().forEach(e => {
+    const marker = e.isCurrent ? '-> ' : '   ';
+    console.log(`   ${marker}${e.key} (${e.name})`);
+  });
+  console.log('==========================================');
+  console.log('');
 });
 
 // Graceful shutdown
-const shutdown = () => {
+const shutdown = async () => {
   console.log('\nShutting down...');
   logTailer.stop();
   healthMonitor.stop();
+  await closeDbPools();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);
