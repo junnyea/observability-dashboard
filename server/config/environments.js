@@ -8,10 +8,26 @@ const Environment = {
   PROD: 'PROD'
 };
 
+// Shared database configuration (same DB for both environments)
+const sharedDatabase = {
+  host: process.env.DB_HOST || '192.168.50.90',
+  port: parseInt(process.env.DB_PORT) || 5432,
+  database: process.env.DB_DATABASE || 'bulwark',
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres'
+};
+
 const config = {
   [Environment.DEV]: {
     name: 'Development',
     services: {
+      configSvc: {
+        name: 'config-svc',
+        displayName: 'bw-config-svc-dev',
+        localPort: 5000,
+        awsUrl: 'https://in63hk71k9.execute-api.ap-southeast-1.amazonaws.com/dev',
+        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
+      },
       tenantSvc: {
         name: 'tenant-svc',
         displayName: 'bw-tenant-svc-dev',
@@ -26,25 +42,26 @@ const config = {
         awsUrl: 'https://nufhcf6hcb.execute-api.ap-southeast-1.amazonaws.com/dev',
         logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/checkin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/checkin-svc.log'
       },
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-dev',
-        localPort: 5000,
-        awsUrl: 'https://in63hk71k9.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
+      adminSvc: {
+        name: 'admin-svc',
+        displayName: 'bw-admin-svc-dev',
+        localPort: 5004,
+        awsUrl: null, // No AWS deployment yet
+        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/admin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/admin-svc.log'
       }
     },
-    database: {
-      host: process.env.DB_HOST_DEV || process.env.DB_HOST || '192.168.50.90',
-      port: parseInt(process.env.DB_PORT_DEV || process.env.DB_PORT) || 5432,
-      database: process.env.DB_DATABASE_DEV || process.env.DB_DATABASE || 'bulwark',
-      user: process.env.DB_USER_DEV || process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD_DEV || process.env.DB_PASSWORD || 'postgres'
-    }
+    database: sharedDatabase
   },
   [Environment.PROD]: {
     name: 'Production',
     services: {
+      configSvc: {
+        name: 'config-svc',
+        displayName: 'bw-config-svc-prod',
+        localPort: null,
+        awsUrl: 'https://sfz7692ls3.execute-api.ap-southeast-1.amazonaws.com/prod',
+        logFile: null
+      },
       tenantSvc: {
         name: 'tenant-svc',
         displayName: 'bw-tenant-svc-prod',
@@ -59,21 +76,15 @@ const config = {
         awsUrl: 'https://f2agg624gl.execute-api.ap-southeast-1.amazonaws.com/prod',
         logFile: null
       },
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-prod',
+      adminSvc: {
+        name: 'admin-svc',
+        displayName: 'bw-admin-svc-prod',
         localPort: null,
-        awsUrl: 'https://sfz7692ls3.execute-api.ap-southeast-1.amazonaws.com/prod',
+        awsUrl: null, // No AWS deployment yet
         logFile: null
       }
     },
-    database: {
-      host: process.env.DB_HOST_PROD || '',
-      port: parseInt(process.env.DB_PORT_PROD) || 5432,
-      database: process.env.DB_DATABASE_PROD || '',
-      user: process.env.DB_USER_PROD || '',
-      password: process.env.DB_PASSWORD_PROD || ''
-    }
+    database: sharedDatabase
   }
 };
 
