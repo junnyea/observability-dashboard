@@ -1,12 +1,14 @@
 # Observability Dashboard
 
-A full-stack observability dashboard for monitoring services, viewing logs in real-time, and tracking metrics.
+A full-stack observability dashboard for monitoring services, viewing logs in real-time, and tracking metrics. Supports multiple environments (DEV, STAGING, HOTFIX, PROD) with both local and AWS service monitoring.
 
 ## Features
 
-- **Service Health Monitoring** - Real-time health status of configured services with automatic checks
+- **Multi-Environment Support** - Switch between DEV, STAGING, HOTFIX, and PROD environments
+- **Service Health Monitoring** - Real-time health status for both local and AWS API Gateway services
 - **Live Log Streaming** - WebSocket-powered log tailing with filtering and search capabilities
 - **Metrics Dashboard** - Visual metrics and endpoint statistics with charts
+- **Multi-Database Support** - Connect to different PostgreSQL databases per environment
 - **Authentication** - Token-based authentication for secure access
 
 ## Tech Stack
@@ -24,12 +26,13 @@ A full-stack observability dashboard for monitoring services, viewing logs in re
 - Socket.IO (WebSocket server)
 - PostgreSQL (via pg)
 - Tail (log file monitoring)
+- Axios (AWS health checks)
 
 ## Prerequisites
 
 - Node.js 18+
 - PostgreSQL database
-- Access to service log files
+- Access to service log files (for local monitoring)
 
 ## Installation
 
@@ -44,15 +47,30 @@ cd observability-dashboard
 npm run install:all
 ```
 
-3. Create a `.env` file in the root directory:
-```env
-DASHBOARD_PORT=5100
-LOG_DIR=/path/to/your/logs
-DATABASE_URL=postgresql://user:password@localhost:5432/dbname
-AUTH_TOKEN=your-secret-token
+3. Create a `.env` file from the example:
+```bash
+cp .env.example .env
 ```
 
-4. Configure services to monitor in `server/config/services.js`
+4. Update `.env` with your configuration:
+```env
+NODE_ENV=DEV
+DASHBOARD_PORT=5100
+AUTH_TOKEN=your-secret-token
+
+# Development Database
+DB_HOST=192.168.50.90
+DB_PORT=5432
+DB_DATABASE=bulwark
+DB_USER=postgres
+DB_PASSWORD=postgres
+
+# Production Database (optional)
+DB_HOST_PROD=your-prod-host.rds.amazonaws.com
+DB_DATABASE_PROD=bulwark_prod
+DB_USER_PROD=prod_user
+DB_PASSWORD_PROD=your-secure-password
+```
 
 ## Usage
 
@@ -83,22 +101,52 @@ npm start
 
 The dashboard will be available at `http://localhost:5100`
 
+## Environment Configuration
+
+The dashboard supports 4 environments:
+
+| Environment | Description | Service Checks |
+|-------------|-------------|----------------|
+| **DEV** | Local development | Local ports + AWS |
+| **STAGING** | Staging/QA | AWS only |
+| **HOTFIX** | Hotfix testing | Local + AWS |
+| **PROD** | Production | AWS only |
+
+### AWS Service URLs
+
+AWS API Gateway endpoints are pre-configured in `server/config/environments.js`:
+
+- **tenant-svc**: Tenant management service
+- **checkin-svc**: Check-in service
+- **config-svc**: Configuration service
+
 ## Project Structure
 
 ```
 observability-dashboard/
 ├── client/                 # React frontend
 │   ├── src/
-│   │   ├── components/     # UI components
+│   │   ├── components/
+│   │   │   ├── Dashboard/      # Dashboard components
+│   │   │   ├── Environment/    # Environment switcher
+│   │   │   ├── Layout/         # Layout components
+│   │   │   ├── Logs/           # Log viewer components
+│   │   │   └── Metrics/        # Metrics components
 │   │   ├── context/        # React context (Auth)
 │   │   ├── hooks/          # Custom hooks
 │   │   ├── pages/          # Page components
 │   │   └── utils/          # Utility functions
 │   └── ...
 ├── server/                 # Express backend
-│   ├── config/             # Service configuration
+│   ├── config/
+│   │   ├── environments.js # Environment configuration
+│   │   └── services.js     # Service configuration
 │   ├── db/                 # Database connection
-│   ├── routes/             # API routes
+│   ├── routes/
+│   │   ├── environment.js  # Environment API
+│   │   ├── health.js       # Health API
+│   │   ├── logs.js         # Logs API
+│   │   └── metrics.js      # Metrics API
 │   ├── services/           # Business logic
 │   ├── sockets/            # WebSocket handlers
 │   └── index.js            # Server entry point
@@ -115,6 +163,10 @@ observability-dashboard/
 | `GET /api/metrics` | Service metrics |
 | `GET /api/logs` | Historical logs |
 | `GET /api/info` | Dashboard info |
+| `GET /api/environment` | Get current environment |
+| `POST /api/environment/switch` | Switch environment |
+| `GET /api/environment/database` | Database connection status |
+| `GET /api/environment/database/all` | All environments DB status |
 
 ## WebSocket Events
 
