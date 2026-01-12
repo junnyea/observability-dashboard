@@ -113,9 +113,8 @@ class HealthMonitor {
   async checkService(service) {
     const env = getEnvironment();
 
-    // For DEV and HOTFIX, check local services
-    // For PROD and STAGING, check AWS endpoints
-    const useLocal = (env === Environment.DEV || env === Environment.HOTFIX) && service.port;
+    // For DEV, check local services; for PROD, check AWS endpoints
+    const useLocal = (env === Environment.DEV) && service.port;
     const useAws = service.awsUrl;
 
     const results = [];

@@ -1,12 +1,10 @@
 /**
  * Environment configuration for observability dashboard
- * Supports DEV, STAGING, HOTFIX, and PROD environments
+ * Supports DEV and PROD environments
  */
 
 const Environment = {
   DEV: 'DEV',
-  STAGING: 'STAGING',
-  HOTFIX: 'HOTFIX',
   PROD: 'PROD'
 };
 
@@ -34,72 +32,6 @@ const config = {
         localPort: 5000,
         awsUrl: 'https://in63hk71k9.execute-api.ap-southeast-1.amazonaws.com/dev',
         logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
-      }
-    },
-    database: {
-      host: process.env.DB_HOST_DEV || process.env.DB_HOST || '192.168.50.90',
-      port: parseInt(process.env.DB_PORT_DEV || process.env.DB_PORT) || 5432,
-      database: process.env.DB_DATABASE_DEV || process.env.DB_DATABASE || 'bulwark',
-      user: process.env.DB_USER_DEV || process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD_DEV || process.env.DB_PASSWORD || 'postgres'
-    }
-  },
-  [Environment.STAGING]: {
-    name: 'Staging',
-    services: {
-      tenantSvc: {
-        name: 'tenant-svc',
-        displayName: 'bw-tenant-svc-staging',
-        localPort: null,
-        awsUrl: '',
-        logFile: null
-      },
-      checkinSvc: {
-        name: 'checkin-svc',
-        displayName: 'bw-checkin-svc-staging',
-        localPort: null,
-        awsUrl: '',
-        logFile: null
-      },
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-staging',
-        localPort: null,
-        awsUrl: '',
-        logFile: null
-      }
-    },
-    database: {
-      host: process.env.DB_HOST_STAGING || '',
-      port: parseInt(process.env.DB_PORT_STAGING) || 5432,
-      database: process.env.DB_DATABASE_STAGING || '',
-      user: process.env.DB_USER_STAGING || '',
-      password: process.env.DB_PASSWORD_STAGING || ''
-    }
-  },
-  [Environment.HOTFIX]: {
-    name: 'Hotfix',
-    services: {
-      tenantSvc: {
-        name: 'tenant-svc',
-        displayName: 'bw-tenant-svc-hotfix',
-        localPort: 5001,
-        awsUrl: 'https://fx9cxmlzh5.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/tenant-svc.log` : null
-      },
-      checkinSvc: {
-        name: 'checkin-svc',
-        displayName: 'bw-checkin-svc-hotfix',
-        localPort: 5002,
-        awsUrl: 'https://j6seznap73.execute-api.ap-southeast-1.amazonaws.com/hotfix',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/checkin-svc.log` : null
-      },
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-hotfix',
-        localPort: 5000,
-        awsUrl: 'https://in63hk71k9.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : null
       }
     },
     database: {
