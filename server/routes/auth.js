@@ -1,22 +1,26 @@
 const express = require('express');
 const router = express.Router();
-
-// Hardcoded credentials
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'admin2024@@';
-
-// Simple token (in production, use JWT)
-const AUTH_TOKEN = 'obv-dashboard-token-2024';
+const authService = require('../services/auth-service');
 
 // Login endpoint
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   const { username, password } = req.body;
 
-  if (username === ADMIN_USER && password === ADMIN_PASS) {
+  if (!username || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Username and password are required'
+    });
+  }
+
+  const result = await authService.validateUser(username, password);
+
+  if (result.valid) {
+    const token = await authService.getAuthToken();
     res.json({
       success: true,
-      token: AUTH_TOKEN,
-      user: { username: ADMIN_USER }
+      token: token,
+      user: result.user
     });
   } else {
     res.status(401).json({
@@ -27,11 +31,17 @@ router.post('/login', (req, res) => {
 });
 
 // Verify token endpoint
-router.get('/verify', (req, res) => {
+router.get('/verify', async (req, res) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
 
-  if (token === AUTH_TOKEN) {
-    res.json({ valid: true, user: { username: ADMIN_USER } });
+  if (!token) {
+    return res.status(401).json({ valid: false });
+  }
+
+  const isValid = await authService.verifyToken(token);
+
+  if (isValid) {
+    res.json({ valid: true });
   } else {
     res.status(401).json({ valid: false });
   }
@@ -43,7 +53,7 @@ router.post('/logout', (req, res) => {
 });
 
 // Auth middleware for protecting routes
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   // Skip auth for login and static files
   if (req.path === '/api/auth/login' || req.path === '/api/auth/verify') {
     return next();
@@ -51,12 +61,20 @@ const authMiddleware = (req, res, next) => {
 
   const token = req.headers.authorization?.replace('Bearer ', '');
 
-  if (token === AUTH_TOKEN) {
-    req.user = { username: ADMIN_USER };
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const isValid = await authService.verifyToken(token);
+
+  if (isValid) {
     next();
   } else {
     res.status(401).json({ error: 'Unauthorized' });
   }
 };
 
-module.exports = { router, authMiddleware, AUTH_TOKEN };
+// Helper to get auth token (for WebSocket auth)
+const getAuthToken = () => authService.getAuthToken();
+
+module.exports = { router, authMiddleware, getAuthToken };

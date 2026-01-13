@@ -1,140 +1,97 @@
-import { CheckCircle, XCircle, Clock, Wifi, Cloud, Server, AlertTriangle } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Server, Cloud, AlertTriangle, Settings } from 'lucide-react'
 
-// Use displayName when accessed via domain, name when localhost
-function getServiceName(service) {
-  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  return isLocalhost ? service?.name : (service?.displayName || service?.name)
-}
-
-function StatusBadge({ status, type, responseTime }) {
-  const getStatusColor = (status) => {
+function StatusBadge({ status, responseTime }) {
+  const getStatusConfig = (status) => {
     switch (status) {
-      case 'healthy': return 'bg-green-100 text-green-700 border-green-300'
-      case 'degraded': return 'bg-yellow-100 text-yellow-700 border-yellow-300'
-      case 'unhealthy': return 'bg-red-100 text-red-700 border-red-300'
-      default: return 'bg-gray-100 text-gray-700 border-gray-300'
+      case 'healthy':
+        return { color: 'bg-green-100 text-green-700 border-green-300', icon: <CheckCircle size={14} /> }
+      case 'degraded':
+        return { color: 'bg-yellow-100 text-yellow-700 border-yellow-300', icon: <AlertTriangle size={14} /> }
+      case 'unhealthy':
+        return { color: 'bg-red-100 text-red-700 border-red-300', icon: <XCircle size={14} /> }
+      case 'not_configured':
+        return { color: 'bg-gray-100 text-gray-500 border-gray-300', icon: <Settings size={14} /> }
+      default:
+        return { color: 'bg-gray-100 text-gray-500 border-gray-300', icon: null }
     }
   }
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'healthy': return <CheckCircle size={12} />
-      case 'degraded': return <AlertTriangle size={12} />
-      case 'unhealthy': return <XCircle size={12} />
-      default: return null
-    }
-  }
+  const config = getStatusConfig(status)
 
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium ${getStatusColor(status)}`}>
-      {type === 'local' ? <Server size={12} /> : <Cloud size={12} />}
-      <span>{type === 'local' ? 'Local' : 'AWS'}</span>
-      {getStatusIcon(status)}
+    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-medium ${config.color}`}>
+      {config.icon}
+      <span className="capitalize">{status?.replace('_', ' ') || 'Unknown'}</span>
       {responseTime && <span className="text-gray-500">({responseTime}ms)</span>}
     </div>
   )
 }
 
-export default function ServiceCard({ service, uptime, avgResponseTime }) {
-  const serviceName = getServiceName(service)
-
-  // Determine overall status
-  const hasLocal = service?.local || service?.port
-  const hasAws = service?.aws || service?.awsUrl
-  const localStatus = service?.local?.status || service?.status
-  const awsStatus = service?.aws?.status
-
-  // Overall status logic
-  let overallStatus = service?.status || 'unknown'
-  if (service?.local && service?.aws) {
-    // Both available - healthy if either is healthy
-    overallStatus = (service.local.status === 'healthy' || service.aws.status === 'healthy')
-      ? 'healthy'
-      : (service.local.status === 'degraded' || service.aws.status === 'degraded')
-        ? 'degraded'
-        : 'unhealthy'
+export default function ServiceCard({ service, envData, uptime, selectedEnv }) {
+  const getBorderColor = (status) => {
+    switch (status) {
+      case 'healthy': return 'border-green-200 bg-green-50'
+      case 'degraded': return 'border-yellow-200 bg-yellow-50'
+      case 'unhealthy': return 'border-red-200 bg-red-50'
+      default: return 'border-gray-200 bg-gray-50'
+    }
   }
 
-  const isHealthy = overallStatus === 'healthy'
-  const isDegraded = overallStatus === 'degraded'
-
-  const getBorderColor = () => {
-    if (isHealthy) return 'border-green-200 bg-green-50'
-    if (isDegraded) return 'border-yellow-200 bg-yellow-50'
-    return 'border-red-200 bg-red-50'
+  const getMainIcon = (status) => {
+    switch (status) {
+      case 'healthy': return <CheckCircle className="text-green-600" size={28} />
+      case 'degraded': return <AlertTriangle className="text-yellow-600" size={28} />
+      case 'unhealthy': return <XCircle className="text-red-600" size={28} />
+      default: return <Settings className="text-gray-400" size={28} />
+    }
   }
 
-  const getMainIcon = () => {
-    if (isHealthy) return <CheckCircle className="text-green-600" size={28} />
-    if (isDegraded) return <AlertTriangle className="text-yellow-600" size={28} />
-    return <XCircle className="text-red-600" size={28} />
-  }
+  const hasLocal = envData?.local
+  const hasAws = envData?.aws
 
   return (
-    <div className={`p-5 rounded-xl border-2 transition-all ${getBorderColor()}`}>
+    <div className={`p-5 rounded-xl border-2 transition-all ${getBorderColor(envData?.status)}`}>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-gray-800 text-lg">{serviceName || 'Unknown'}</h3>
-        {getMainIcon()}
+        <div>
+          <h3 className="font-semibold text-gray-800 text-lg">{service?.displayName || service?.name}</h3>
+          <p className="text-xs text-gray-500">{service?.name}</p>
+        </div>
+        {getMainIcon(envData?.status)}
       </div>
 
-      <div className="space-y-2 text-sm">
-        {/* Status badges for local and AWS */}
-        <div className="flex flex-wrap gap-2 mb-3">
-          {service?.local && (
-            <StatusBadge
-              type="local"
-              status={service.local.status}
-              responseTime={service.local.responseTime}
-            />
-          )}
-          {service?.aws && (
-            <StatusBadge
-              type="aws"
-              status={service.aws.status}
-              responseTime={service.aws.responseTime}
-            />
-          )}
-          {!service?.local && !service?.aws && service?.type && (
-            <StatusBadge
-              type={service.type}
-              status={service.status}
-              responseTime={service.responseTime}
-            />
-          )}
-        </div>
-
-        {/* Port info */}
-        {service?.port && (
-          <div className="flex items-center gap-2 text-gray-600">
-            <Wifi size={14} />
-            <span>Port {service.port}</span>
+      <div className="space-y-3 text-sm">
+        {/* Local status (DEV only) */}
+        {hasLocal && (
+          <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-100">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Server size={16} />
+              <span>Local :{envData.local.port}</span>
+            </div>
+            <StatusBadge status={envData.local.status} responseTime={envData.local.responseTime} />
           </div>
         )}
 
-        {/* AWS URL info */}
-        {(service?.awsUrl || service?.aws?.awsUrl) && (
-          <div className="flex items-center gap-2 text-gray-600">
-            <Cloud size={14} />
-            <span className="text-xs truncate max-w-[200px]" title={service.awsUrl || service.aws?.awsUrl}>
-              {(service.awsUrl || service.aws?.awsUrl)?.replace('https://', '').split('/')[0]}
-            </span>
+        {/* AWS status */}
+        {hasAws && (
+          <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-100">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Cloud size={16} />
+              <span>AWS {selectedEnv}</span>
+            </div>
+            <StatusBadge status={envData.aws.status} responseTime={envData.aws.responseTime} />
           </div>
         )}
 
-        {/* Response time */}
-        <div className="flex items-center gap-2 text-gray-600">
-          <Clock size={14} />
-          <span>
-            {service?.responseTime || service?.local?.responseTime || service?.aws?.responseTime
-              ? `${service.responseTime || service.local?.responseTime || service.aws?.responseTime}ms`
-              : 'N/A'}
-            {avgResponseTime && ` (avg: ${avgResponseTime}ms)`}
-          </span>
-        </div>
+        {/* No endpoints configured */}
+        {!hasLocal && (!hasAws || envData.aws.status === 'not_configured') && (
+          <div className="text-center py-2 text-gray-400 text-xs">
+            No endpoints configured for {selectedEnv}
+          </div>
+        )}
 
-        {/* Uptime bar */}
+        {/* Uptime */}
         {uptime !== undefined && (
-          <div className="mt-3 pt-3 border-t border-gray-200">
+          <div className="pt-3 border-t border-gray-200">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>Uptime</span>
               <span>{uptime}%</span>
@@ -148,9 +105,11 @@ export default function ServiceCard({ service, uptime, avgResponseTime }) {
           </div>
         )}
 
-        <div className="text-xs text-gray-400 mt-2">
-          Last check: {service?.lastCheck ? new Date(service.lastCheck).toLocaleTimeString() : 'Never'}
-        </div>
+        {envData?.local?.lastCheck && (
+          <div className="text-xs text-gray-400 text-center">
+            Last check: {new Date(envData.local.lastCheck || envData.aws?.lastCheck).toLocaleTimeString()}
+          </div>
+        )}
       </div>
     </div>
   )

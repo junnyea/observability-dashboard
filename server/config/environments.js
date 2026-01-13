@@ -1,136 +1,172 @@
 /**
  * Environment configuration for observability dashboard
- * Supports DEV and PROD environments
+ * DEV: Local services only
+ * PROD: AWS services only
+ *
+ * Database credentials are loaded from app_credentials table
  */
+
+const credentialsLoader = require('../services/credentials-loader');
 
 const Environment = {
   DEV: 'DEV',
   PROD: 'PROD'
 };
 
-// Shared database configuration (same DB for both environments)
-const sharedDatabase = {
-  host: process.env.DB_HOST || '192.168.50.90',
-  port: parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_DATABASE || 'bulwark',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres'
+// Cache for database configs
+const dbConfigCache = {};
+
+/**
+ * Get database config - loads from app_credentials table
+ * @param {string} env - Environment (dev, prod)
+ * @returns {Promise<object>} Database configuration
+ */
+const getDatabase = async (env = 'dev') => {
+  const targetEnv = env.toLowerCase();
+
+  // Check cache first
+  if (dbConfigCache[targetEnv]) {
+    return dbConfigCache[targetEnv];
+  }
+
+  // Try to load from database
+  const dbCreds = await credentialsLoader.getDatabaseCredentials(targetEnv);
+  if (dbCreds) {
+    dbConfigCache[targetEnv] = {
+      host: dbCreds.host,
+      port: dbCreds.port || 5432,
+      database: dbCreds.database,
+      user: dbCreds.user,
+      password: dbCreds.password
+    };
+    return dbConfigCache[targetEnv];
+  }
+
+  // Fall back to environment variables
+  if (targetEnv === 'prod') {
+    return {
+      host: process.env.PROD_DB_HOST,
+      port: parseInt(process.env.PROD_DB_PORT) || 5432,
+      database: process.env.PROD_DB_DATABASE || 'bulwark',
+      user: process.env.PROD_DB_USER || 'postgres',
+      password: process.env.PROD_DB_PASSWORD
+    };
+  }
+
+  // Default to dev from env vars
+  return {
+    host: process.env.DEV_DB_HOST || '192.168.50.90',
+    port: parseInt(process.env.DEV_DB_PORT) || 5432,
+    database: process.env.DEV_DB_DATABASE || 'bulwark',
+    user: process.env.DEV_DB_USER || 'postgres',
+    password: process.env.DEV_DB_PASSWORD || 'postgres'
+  };
 };
 
-const config = {
-  [Environment.DEV]: {
-    name: 'Development',
-    services: {
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-dev',
-        localPort: 5000,
-        awsUrl: 'https://in63hk71k9.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
-      },
-      tenantSvc: {
-        name: 'tenant-svc',
-        displayName: 'bw-tenant-svc-dev',
-        localPort: 5001,
-        awsUrl: 'https://fx9cxmlzh5.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/tenant-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/tenant-svc.log'
-      },
-      checkinSvc: {
-        name: 'checkin-svc',
-        displayName: 'bw-checkin-svc-dev',
-        localPort: 5002,
-        awsUrl: 'https://nufhcf6hcb.execute-api.ap-southeast-1.amazonaws.com/dev',
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/checkin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/checkin-svc.log'
-      },
-      adminSvc: {
-        name: 'admin-svc',
-        displayName: 'bw-admin-svc-dev',
-        localPort: 5004,
-        awsUrl: null, // No AWS deployment yet
-        logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/admin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/admin-svc.log'
-      }
+/**
+ * Get database config synchronously (uses cached values or env vars)
+ * Use this when async is not possible
+ */
+const getDatabaseSync = (env = 'dev') => {
+  const targetEnv = env.toLowerCase();
+
+  // Return cached if available
+  if (dbConfigCache[targetEnv]) {
+    return dbConfigCache[targetEnv];
+  }
+
+  // Fall back to environment variables
+  if (targetEnv === 'prod') {
+    return {
+      host: process.env.PROD_DB_HOST,
+      port: parseInt(process.env.PROD_DB_PORT) || 5432,
+      database: process.env.PROD_DB_DATABASE || 'bulwark',
+      user: process.env.PROD_DB_USER || 'postgres',
+      password: process.env.PROD_DB_PASSWORD
+    };
+  }
+
+  return {
+    host: process.env.DEV_DB_HOST || '192.168.50.90',
+    port: parseInt(process.env.DEV_DB_PORT) || 5432,
+    database: process.env.DEV_DB_DATABASE || 'bulwark',
+    user: process.env.DEV_DB_USER || 'postgres',
+    password: process.env.DEV_DB_PASSWORD || 'postgres'
+  };
+};
+
+// Service definitions with DEV (local only) and PROD (AWS only)
+const services = {
+  'config-svc': {
+    name: 'config-svc',
+    displayName: 'Config Service',
+    dev: {
+      localPort: 5000,
+      awsUrl: null,
+      logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
     },
-    database: sharedDatabase
+    prod: {
+      localPort: null,
+      awsUrl: 'https://4ta9opnwt9.execute-api.ap-southeast-1.amazonaws.com/prod',
+      logFile: null
+    }
   },
-  [Environment.PROD]: {
-    name: 'Production',
-    services: {
-      configSvc: {
-        name: 'config-svc',
-        displayName: 'bw-config-svc-prod',
-        localPort: null,
-        awsUrl: 'https://sfz7692ls3.execute-api.ap-southeast-1.amazonaws.com/prod',
-        logFile: null
-      },
-      tenantSvc: {
-        name: 'tenant-svc',
-        displayName: 'bw-tenant-svc-prod',
-        localPort: null,
-        awsUrl: 'https://r9kzo1cvm4.execute-api.ap-southeast-1.amazonaws.com/prod',
-        logFile: null
-      },
-      checkinSvc: {
-        name: 'checkin-svc',
-        displayName: 'bw-checkin-svc-prod',
-        localPort: null,
-        awsUrl: 'https://f2agg624gl.execute-api.ap-southeast-1.amazonaws.com/prod',
-        logFile: null
-      },
-      adminSvc: {
-        name: 'admin-svc',
-        displayName: 'bw-admin-svc-prod',
-        localPort: null,
-        awsUrl: null, // No AWS deployment yet
-        logFile: null
-      }
+  'tenant-svc': {
+    name: 'tenant-svc',
+    displayName: 'Tenant Service',
+    dev: {
+      localPort: 5001,
+      awsUrl: null,
+      logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/tenant-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/tenant-svc.log'
     },
-    database: sharedDatabase
+    prod: {
+      localPort: null,
+      awsUrl: 'https://9g2g5ho2xc.execute-api.ap-southeast-1.amazonaws.com/prod',
+      logFile: null
+    }
+  },
+  'checkin-svc': {
+    name: 'checkin-svc',
+    displayName: 'Checkin Service',
+    dev: {
+      localPort: 5002,
+      awsUrl: null,
+      logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/checkin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/checkin-svc.log'
+    },
+    prod: {
+      localPort: null,
+      awsUrl: 'https://8etkilldgi.execute-api.ap-southeast-1.amazonaws.com/prod',
+      logFile: null
+    }
+  },
+  'admin-svc': {
+    name: 'admin-svc',
+    displayName: 'Admin Service',
+    dev: {
+      localPort: 5003,
+      awsUrl: null,
+      logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/admin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/admin-svc.log'
+    },
+    prod: {
+      localPort: null,
+      awsUrl: 'https://wrr00ncfhf.execute-api.ap-southeast-1.amazonaws.com/prod',
+      logFile: null
+    }
   }
 };
 
-// Current environment state
-let currentEnvironment = process.env.NODE_ENV || Environment.DEV;
+const getServices = () => services;
 
-const getEnvironment = () => currentEnvironment;
+const getServiceList = () => Object.values(services);
 
-const setEnvironment = (env) => {
-  if (!Environment[env]) {
-    throw new Error(`Invalid environment: ${env}. Valid options: ${Object.keys(Environment).join(', ')}`);
-  }
-  currentEnvironment = env;
-  console.log(`Environment switched to: ${env}`);
-  return currentEnvironment;
-};
-
-const getConfig = (env = null) => {
-  const targetEnv = env || currentEnvironment;
-  return config[targetEnv] || config[Environment.DEV];
-};
-
-const getServices = (env = null) => {
-  const cfg = getConfig(env);
-  return Object.values(cfg.services);
-};
-
-const getDatabase = (env = null) => {
-  const cfg = getConfig(env);
-  return cfg.database;
-};
-
-const getAllEnvironments = () => {
-  return Object.keys(Environment).map(key => ({
-    key,
-    name: config[key].name,
-    isCurrent: key === currentEnvironment
-  }));
-};
+const getEnvironments = () => Object.keys(Environment);
 
 module.exports = {
   Environment,
-  getEnvironment,
-  setEnvironment,
-  getConfig,
+  services,
   getServices,
+  getServiceList,
   getDatabase,
-  getAllEnvironments
+  getDatabaseSync,
+  getEnvironments
 };

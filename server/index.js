@@ -7,25 +7,15 @@ const cors = require('cors');
 const path = require('path');
 
 const config = require('./config/services');
-const { getEnvironment, setEnvironment, getAllEnvironments } = require('./config/environments');
-const { closeAll: closeDbPools, testConnection } = require('./db/pool');
+const { services, getServiceList, getDatabase, getEnvironments } = require('./config/environments');
 const LogTailer = require('./services/log-tailer');
 const HealthMonitor = require('./services/health-monitor');
 const { setupLogSocket, setupHealthSocket } = require('./sockets/log-stream');
 const healthRoutes = require('./routes/health');
 const metricsRoutes = require('./routes/metrics');
 const logsRoutes = require('./routes/logs');
-const environmentRoutes = require('./routes/environment');
-const { router: authRoutes, authMiddleware, AUTH_TOKEN } = require('./routes/auth');
-
-// Set initial environment from NODE_ENV
-const initialEnv = process.env.NODE_ENV || 'DEV';
-try {
-  setEnvironment(initialEnv);
-} catch (e) {
-  console.warn(`Invalid NODE_ENV "${initialEnv}", defaulting to DEV`);
-  setEnvironment('DEV');
-}
+const { router: authRoutes, authMiddleware } = require('./routes/auth');
+const authService = require('./services/auth-service');
 
 const app = express();
 const server = http.createServer(app);
@@ -40,9 +30,17 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
+// Build log files list from services config
+const logFiles = getServiceList()
+  .filter(s => s.dev.logFile)
+  .map(s => ({
+    name: s.name,
+    logFile: s.dev.logFile
+  }));
+
 // Initialize services
-const logTailer = new LogTailer(config.services);
-const healthMonitor = new HealthMonitor(config.services, config.healthCheckInterval);
+const logTailer = new LogTailer(logFiles);
+const healthMonitor = new HealthMonitor(config.healthCheckInterval);
 
 // Setup WebSocket namespaces
 setupLogSocket(io, logTailer);
@@ -53,7 +51,6 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'observability-dashboard',
-    environment: getEnvironment(),
     timestamp: new Date().toISOString()
   });
 });
@@ -65,22 +62,54 @@ app.use('/api/auth', authRoutes);
 app.use('/api/health', authMiddleware, healthRoutes(healthMonitor));
 app.use('/api/metrics', authMiddleware, metricsRoutes);
 app.use('/api/logs', authMiddleware, logsRoutes);
-app.use('/api/environment', authMiddleware, environmentRoutes(healthMonitor));
 
 // Dashboard info endpoint (protected)
 app.get('/api/info', authMiddleware, (req, res) => {
   res.json({
     name: 'Bulwark Observability Dashboard',
     version: '2.0.0',
-    environment: getEnvironment(),
-    environments: getAllEnvironments(),
-    services: config.services.map(s => ({
-      name: s.name,
-      port: s.port,
-      awsUrl: s.awsUrl
-    })),
+    environments: getEnvironments(),
+    services: Object.keys(services),
     uptime: process.uptime()
   });
+});
+
+// Services config endpoint (protected)
+app.get('/api/services', authMiddleware, (req, res) => {
+  res.json(services);
+});
+
+// Database status endpoint (protected)
+app.get('/api/database', authMiddleware, async (req, res) => {
+  const { Pool } = require('pg');
+  const env = req.query.env || 'dev';
+  const dbConfig = await getDatabase(env);
+
+  if (!dbConfig || !dbConfig.host) {
+    return res.json({
+      connected: false,
+      error: `Database not configured for environment: ${env}`
+    });
+  }
+
+  try {
+    const pool = new Pool(dbConfig);
+    const result = await pool.query('SELECT NOW() as now, current_database() as database');
+    await pool.end();
+
+    res.json({
+      environment: env,
+      connected: true,
+      database: result.rows[0].database,
+      serverTime: result.rows[0].now
+    });
+  } catch (error) {
+    res.json({
+      environment: env,
+      connected: false,
+      error: error.message
+    });
+  }
 });
 
 // Serve static frontend in production
@@ -101,48 +130,45 @@ logTailer.start();
 healthMonitor.start();
 
 const PORT = config.dashboardPort;
+
+// Initialize auth service (verify credentials from database)
+const initializeAuth = async () => {
+  const success = await authService.initialize();
+  if (!success) {
+    console.error('[Auth] WARNING: Auth service initialization failed');
+  }
+};
+
 server.listen(PORT, async () => {
-  const env = getEnvironment();
-  const dbStatus = await testConnection();
+  // Initialize auth on startup
+  await initializeAuth();
 
   console.log('');
   console.log('==========================================');
   console.log('   Bulwark Observability Dashboard v2.0');
   console.log('==========================================');
-  console.log(`   Environment: ${env}`);
   console.log(`   URL: http://localhost:${PORT}`);
   console.log(`   API: http://localhost:${PORT}/api`);
   console.log('');
-  console.log('   Database:');
-  console.log(`     Status: ${dbStatus.connected ? 'Connected' : 'Not Connected'}`);
-  if (dbStatus.connected) {
-    console.log(`     Database: ${dbStatus.database}`);
-  } else {
-    console.log(`     Error: ${dbStatus.error}`);
-  }
-  console.log('');
-  console.log('   Monitoring services:');
-  config.services.forEach(s => {
-    const localInfo = s.port ? `local:${s.port}` : 'no local';
-    const awsInfo = s.awsUrl ? 'AWS configured' : 'no AWS';
-    console.log(`     - ${s.name} (${localInfo}, ${awsInfo})`);
+  console.log('   Monitoring Services:');
+  Object.entries(services).forEach(([name, svc]) => {
+    const devLocal = svc.dev.localPort ? `DEV:${svc.dev.localPort}` : '';
+    const devAws = svc.dev.awsUrl ? 'DEV-AWS' : '';
+    const prodAws = svc.prod.awsUrl ? 'PROD-AWS' : '';
+    const endpoints = [devLocal, devAws, prodAws].filter(Boolean).join(', ');
+    console.log(`     - ${name} (${endpoints})`);
   });
   console.log('');
-  console.log('   Available environments:');
-  getAllEnvironments().forEach(e => {
-    const marker = e.isCurrent ? '-> ' : '   ';
-    console.log(`   ${marker}${e.key} (${e.name})`);
-  });
+  console.log('   View: DEV + PROD side by side');
   console.log('==========================================');
   console.log('');
 });
 
 // Graceful shutdown
-const shutdown = async () => {
+const shutdown = () => {
   console.log('\nShutting down...');
   logTailer.stop();
   healthMonitor.stop();
-  await closeDbPools();
   server.close(() => {
     console.log('Server closed');
     process.exit(0);

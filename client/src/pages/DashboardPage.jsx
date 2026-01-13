@@ -1,12 +1,14 @@
 import { useHealthStream } from '../hooks/useWebSocket'
-import { useMetricsSummary } from '../hooks/useHealth'
+import { useMetricsSummary, useServiceDbHealth } from '../hooks/useHealth'
 import HealthOverview from '../components/Dashboard/HealthOverview'
+import DbHealthOverview from '../components/Dashboard/DbHealthOverview'
 import MetricsOverview from '../components/Metrics/MetricsOverview'
 import { RefreshCw } from 'lucide-react'
 
 export default function DashboardPage() {
   const { status, connected } = useHealthStream()
   const { data: summary, loading: summaryLoading } = useMetricsSummary()
+  const { data: dbHealth, loading: dbHealthLoading } = useServiceDbHealth()
 
   return (
     <div>
@@ -31,6 +33,11 @@ export default function DashboardPage() {
         services={status.services}
         uptime={status.uptime}
         avgResponseTime={status.avgResponseTime}
+      />
+
+      <DbHealthOverview
+        dbHealth={dbHealth}
+        loading={dbHealthLoading}
       />
 
       <div className="mt-8">

@@ -1,41 +1,27 @@
 const axios = require('axios');
-const { getEnvironment, Environment } = require('../config/environments');
+const { Pool } = require('pg');
+const { services, Environment, getDatabase } = require('../config/environments');
 
 class HealthMonitor {
-  constructor(services, interval = 5000) {
-    this.services = services;
+  constructor(interval = 5000) {
     this.interval = interval;
     this.status = {};
     this.history = {};
+    this.databaseStatus = {};
+    this.databaseHistory = {};
     this.onUpdate = null;
     this.timer = null;
   }
 
-  updateServices(services) {
-    this.services = services;
-    // Clear status for services that no longer exist
-    const serviceNames = services.map(s => s.name);
-    Object.keys(this.status).forEach(name => {
-      if (!serviceNames.includes(name)) {
-        delete this.status[name];
-        delete this.history[name];
-      }
-    });
-  }
-
-  async checkLocalService(service) {
+  async checkLocalService(serviceName, port) {
     const startTime = Date.now();
     try {
-      const response = await axios.get(`http://localhost:${service.port}/health`, {
+      const response = await axios.get(`http://localhost:${port}/health`, {
         timeout: 3000
       });
       const responseTime = Date.now() - startTime;
 
       return {
-        name: service.name,
-        displayName: service.displayName,
-        port: service.port,
-        type: 'local',
         status: 'healthy',
         responseTime,
         lastCheck: new Date().toISOString(),
@@ -43,10 +29,6 @@ class HealthMonitor {
       };
     } catch (error) {
       return {
-        name: service.name,
-        displayName: service.displayName,
-        port: service.port,
-        type: 'local',
         status: 'unhealthy',
         responseTime: null,
         lastCheck: new Date().toISOString(),
@@ -55,24 +37,27 @@ class HealthMonitor {
     }
   }
 
-  async checkAwsService(service) {
+  async checkAwsService(serviceName, awsUrl) {
+    if (!awsUrl) {
+      return {
+        status: 'not_configured',
+        responseTime: null,
+        lastCheck: new Date().toISOString(),
+        error: 'No AWS URL configured'
+      };
+    }
+
     const startTime = Date.now();
     try {
-      // AWS API Gateway health check - try the base URL
-      const response = await axios.get(`${service.awsUrl}/health`, {
+      const response = await axios.get(`${awsUrl}/health`, {
         timeout: 10000,
-        validateStatus: (status) => status < 500 // Accept 2xx, 3xx, 4xx as "reachable"
+        validateStatus: (status) => status < 500
       });
       const responseTime = Date.now() - startTime;
 
-      // Consider 2xx as healthy, others as degraded but reachable
       const isHealthy = response.status >= 200 && response.status < 300;
 
       return {
-        name: service.name,
-        displayName: service.displayName,
-        awsUrl: service.awsUrl,
-        type: 'aws',
         status: isHealthy ? 'healthy' : 'degraded',
         httpStatus: response.status,
         responseTime,
@@ -82,13 +67,8 @@ class HealthMonitor {
     } catch (error) {
       const responseTime = Date.now() - startTime;
 
-      // If we get a response (even error), the service is reachable
       if (error.response) {
         return {
-          name: service.name,
-          displayName: service.displayName,
-          awsUrl: service.awsUrl,
-          type: 'aws',
           status: 'degraded',
           httpStatus: error.response.status,
           responseTime,
@@ -98,10 +78,6 @@ class HealthMonitor {
       }
 
       return {
-        name: service.name,
-        displayName: service.displayName,
-        awsUrl: service.awsUrl,
-        type: 'aws',
         status: 'unhealthy',
         responseTime: null,
         lastCheck: new Date().toISOString(),
@@ -110,86 +86,171 @@ class HealthMonitor {
     }
   }
 
-  async checkService(service) {
-    const env = getEnvironment();
+  async checkDatabase(env) {
+    const startTime = Date.now();
+    let pool = null;
 
-    // For DEV, check local services; for PROD, check AWS endpoints
-    const useLocal = (env === Environment.DEV) && service.port;
-    const useAws = service.awsUrl;
+    try {
+      const dbConfig = await getDatabase(env);
 
-    const results = [];
+      if (!dbConfig || !dbConfig.host) {
+        return {
+          status: 'not_configured',
+          responseTime: null,
+          lastCheck: new Date().toISOString(),
+          error: 'Database not configured'
+        };
+      }
 
-    // Check local if available and in dev/hotfix mode
-    if (useLocal) {
-      results.push(await this.checkLocalService(service));
-    }
+      pool = new Pool({
+        ...dbConfig,
+        max: 1,
+        connectionTimeoutMillis: 5000,
+        idleTimeoutMillis: 1000
+      });
 
-    // Check AWS if URL is configured
-    if (useAws) {
-      results.push(await this.checkAwsService(service));
-    }
+      const result = await pool.query('SELECT NOW() as now, current_database() as database, version() as version');
+      const responseTime = Date.now() - startTime;
 
-    // Return combined result
-    if (results.length === 0) {
+      await pool.end();
+
       return {
-        name: service.name,
-        displayName: service.displayName,
-        type: 'unknown',
-        status: 'unknown',
+        status: 'healthy',
+        responseTime,
         lastCheck: new Date().toISOString(),
-        error: 'No health check endpoint configured'
+        host: dbConfig.host,
+        database: result.rows[0].database,
+        serverTime: result.rows[0].now,
+        version: result.rows[0].version.split(' ')[0] + ' ' + result.rows[0].version.split(' ')[1]
       };
-    }
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
 
-    // If both local and AWS are checked, return both
-    if (results.length === 2) {
+      if (pool) {
+        try { await pool.end(); } catch (e) { /* ignore */ }
+      }
+
       return {
-        name: service.name,
-        displayName: service.displayName,
-        local: results[0],
-        aws: results[1],
-        status: results[0].status === 'healthy' || results[1].status === 'healthy' ? 'healthy' :
-                results[0].status === 'degraded' || results[1].status === 'degraded' ? 'degraded' : 'unhealthy',
-        lastCheck: new Date().toISOString()
+        status: 'unhealthy',
+        responseTime,
+        lastCheck: new Date().toISOString(),
+        error: error.message || error.code
       };
     }
+  }
 
-    return results[0];
+  async checkAllDatabases() {
+    const results = {};
+
+    for (const env of ['dev', 'prod']) {
+      results[env] = await this.checkDatabase(env);
+
+      // Track history
+      if (!this.databaseHistory[env]) {
+        this.databaseHistory[env] = [];
+      }
+
+      this.databaseHistory[env].push({
+        status: results[env].status,
+        timestamp: new Date().toISOString()
+      });
+
+      // Keep last 100 entries
+      if (this.databaseHistory[env].length > 100) {
+        this.databaseHistory[env].shift();
+      }
+    }
+
+    this.databaseStatus = results;
+    return results;
+  }
+
+  async checkService(serviceName, serviceConfig) {
+    const result = {
+      name: serviceName,
+      displayName: serviceConfig.displayName,
+      dev: {
+        local: null,
+        aws: null
+      },
+      prod: {
+        aws: null
+      }
+    };
+
+    // Check DEV local
+    if (serviceConfig.dev.localPort) {
+      result.dev.local = await this.checkLocalService(serviceName, serviceConfig.dev.localPort);
+      result.dev.local.port = serviceConfig.dev.localPort;
+    }
+
+    // Check DEV AWS
+    result.dev.aws = await this.checkAwsService(serviceName, serviceConfig.dev.awsUrl);
+    if (serviceConfig.dev.awsUrl) {
+      result.dev.aws.url = serviceConfig.dev.awsUrl;
+    }
+
+    // Check PROD AWS
+    result.prod.aws = await this.checkAwsService(serviceName, serviceConfig.prod.awsUrl);
+    if (serviceConfig.prod.awsUrl) {
+      result.prod.aws.url = serviceConfig.prod.awsUrl;
+    }
+
+    // Calculate overall status for each environment
+    result.dev.status = this.calculateEnvStatus(result.dev);
+    result.prod.status = this.calculateEnvStatus(result.prod);
+
+    return result;
+  }
+
+  calculateEnvStatus(envResult) {
+    const statuses = [];
+    if (envResult.local) statuses.push(envResult.local.status);
+    if (envResult.aws) statuses.push(envResult.aws.status);
+
+    if (statuses.includes('healthy')) return 'healthy';
+    if (statuses.includes('degraded')) return 'degraded';
+    if (statuses.every(s => s === 'not_configured')) return 'not_configured';
+    return 'unhealthy';
   }
 
   async checkAll() {
-    const results = await Promise.all(
-      this.services.map(s => this.checkService(s))
-    );
+    const results = {};
 
-    results.forEach(result => {
-      const prevStatus = this.status[result.name]?.status;
-      this.status[result.name] = result;
+    // Check all services
+    for (const [serviceName, serviceConfig] of Object.entries(services)) {
+      results[serviceName] = await this.checkService(serviceName, serviceConfig);
 
-      // Track history (keep last 100 checks)
-      if (!this.history[result.name]) {
-        this.history[result.name] = [];
+      // Track history
+      if (!this.history[serviceName]) {
+        this.history[serviceName] = { dev: [], prod: [] };
       }
 
-      const historyEntry = {
-        status: result.status,
-        responseTime: result.responseTime || result.local?.responseTime || result.aws?.responseTime,
-        timestamp: result.lastCheck
-      };
+      this.history[serviceName].dev.push({
+        status: results[serviceName].dev.status,
+        timestamp: new Date().toISOString()
+      });
+      this.history[serviceName].prod.push({
+        status: results[serviceName].prod.status,
+        timestamp: new Date().toISOString()
+      });
 
-      this.history[result.name].push(historyEntry);
-      if (this.history[result.name].length > 100) {
-        this.history[result.name].shift();
+      // Keep last 100 entries
+      if (this.history[serviceName].dev.length > 100) {
+        this.history[serviceName].dev.shift();
       }
+      if (this.history[serviceName].prod.length > 100) {
+        this.history[serviceName].prod.shift();
+      }
+    }
 
-      // Log status changes
-      if (prevStatus && prevStatus !== result.status) {
-        console.log(`[Health] ${result.name}: ${prevStatus} -> ${result.status}`);
-      }
-    });
+    this.status = results;
+
+    // Check all databases
+    await this.checkAllDatabases();
 
     if (this.onUpdate) {
-      this.onUpdate(this.status, getEnvironment());
+      this.onUpdate(this.status);
     }
 
     return results;
@@ -209,35 +270,253 @@ class HealthMonitor {
     console.log('Health monitor stopped');
   }
 
-  restart() {
-    this.stop();
-    this.start();
-  }
-
-  getUptime(serviceName) {
-    const hist = this.history[serviceName] || [];
+  getUptime(serviceName, env) {
+    const hist = this.history[serviceName]?.[env] || [];
     if (hist.length === 0) return 100;
     const healthy = hist.filter(h => h.status === 'healthy' || h.status === 'degraded').length;
     return parseFloat((healthy / hist.length * 100).toFixed(2));
   }
 
-  getAverageResponseTime(serviceName) {
-    const hist = this.history[serviceName] || [];
-    const validTimes = hist.filter(h => h.responseTime !== null).map(h => h.responseTime);
-    if (validTimes.length === 0) return null;
-    return Math.round(validTimes.reduce((a, b) => a + b, 0) / validTimes.length);
+  getDatabaseUptime(env) {
+    const hist = this.databaseHistory[env] || [];
+    if (hist.length === 0) return 100;
+    const healthy = hist.filter(h => h.status === 'healthy').length;
+    return parseFloat((healthy / hist.length * 100).toFixed(2));
   }
 
   getAllStatus() {
+    const uptime = {};
+    for (const serviceName of Object.keys(this.status)) {
+      uptime[serviceName] = {
+        dev: this.getUptime(serviceName, 'dev'),
+        prod: this.getUptime(serviceName, 'prod')
+      };
+    }
+
+    const databaseUptime = {
+      dev: this.getDatabaseUptime('dev'),
+      prod: this.getDatabaseUptime('prod')
+    };
+
     return {
-      environment: getEnvironment(),
       services: this.status,
-      uptime: Object.fromEntries(
-        Object.keys(this.status).map(name => [name, this.getUptime(name)])
-      ),
-      avgResponseTime: Object.fromEntries(
-        Object.keys(this.status).map(name => [name, this.getAverageResponseTime(name)])
-      )
+      uptime,
+      databases: this.databaseStatus,
+      databaseUptime
+    };
+  }
+
+  getDatabaseStatus() {
+    return {
+      databases: this.databaseStatus,
+      uptime: {
+        dev: this.getDatabaseUptime('dev'),
+        prod: this.getDatabaseUptime('prod')
+      }
+    };
+  }
+
+  /**
+   * End-to-end health check - validates service is up AND can query database
+   * This ensures the full stack is working correctly
+   */
+  async checkEndToEnd(env = 'dev') {
+    const results = {
+      environment: env,
+      timestamp: new Date().toISOString(),
+      services: {},
+      database: null,
+      summary: {
+        totalServices: 0,
+        healthyServices: 0,
+        databaseConnected: false,
+        allHealthy: false
+      }
+    };
+
+    // Check all services for this environment
+    for (const [serviceName, serviceConfig] of Object.entries(services)) {
+      const serviceResult = {
+        name: serviceName,
+        displayName: serviceConfig.displayName,
+        status: 'unknown',
+        responseTime: null,
+        error: null
+      };
+
+      results.summary.totalServices++;
+
+      try {
+        // Check if service is responding to health endpoint
+        if (env === 'dev' && serviceConfig.dev.localPort) {
+          const startTime = Date.now();
+          const response = await axios.get(`http://localhost:${serviceConfig.dev.localPort}/health`, {
+            timeout: 5000
+          });
+          serviceResult.status = response.status === 200 ? 'healthy' : 'unhealthy';
+          serviceResult.responseTime = Date.now() - startTime;
+        } else if (env === 'prod' && serviceConfig.prod.awsUrl) {
+          const startTime = Date.now();
+          const response = await axios.get(`${serviceConfig.prod.awsUrl}/health`, {
+            timeout: 10000
+          });
+          serviceResult.status = response.status === 200 ? 'healthy' : 'unhealthy';
+          serviceResult.responseTime = Date.now() - startTime;
+        } else {
+          serviceResult.status = 'not_configured';
+        }
+
+        if (serviceResult.status === 'healthy') {
+          results.summary.healthyServices++;
+        }
+
+      } catch (error) {
+        serviceResult.status = 'unhealthy';
+        serviceResult.error = error.code || error.message;
+      }
+
+      results.services[serviceName] = serviceResult;
+    }
+
+    // Step 3: Direct database query to verify DB connectivity
+    try {
+      const dbConfig = await getDatabase(env);
+      if (dbConfig && dbConfig.host) {
+        const pool = new Pool({
+          ...dbConfig,
+          max: 1,
+          connectionTimeoutMillis: 5000,
+          idleTimeoutMillis: 1000
+        });
+
+        const startTime = Date.now();
+
+        // Run a real query - check if tables exist and count records
+        const queries = await pool.query(`
+          SELECT
+            (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public') as table_count,
+            current_database() as database,
+            NOW() as server_time
+        `);
+
+        const responseTime = Date.now() - startTime;
+        await pool.end();
+
+        results.database = {
+          status: 'healthy',
+          host: dbConfig.host,
+          database: queries.rows[0].database,
+          tableCount: parseInt(queries.rows[0].table_count),
+          serverTime: queries.rows[0].server_time,
+          responseTime
+        };
+        results.summary.databaseConnected = true;
+      }
+    } catch (dbError) {
+      results.database = {
+        status: 'unhealthy',
+        error: dbError.message
+      };
+    }
+
+    // Calculate overall health
+    results.summary.allHealthy =
+      results.summary.healthyServices === results.summary.totalServices &&
+      results.summary.databaseConnected;
+
+    return results;
+  }
+
+  /**
+   * Run e2e check for all environments
+   */
+  async checkAllEndToEnd() {
+    return {
+      dev: await this.checkEndToEnd('dev'),
+      prod: await this.checkEndToEnd('prod'),
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  /**
+   * Check each service's /health/db endpoint
+   * This validates that each service can connect to its database
+   */
+  async checkServiceDbHealth(env = 'dev') {
+    const results = {
+      environment: env,
+      timestamp: new Date().toISOString(),
+      services: {},
+      summary: {
+        totalServices: 0,
+        healthyServices: 0,
+        allHealthy: false
+      }
+    };
+
+    for (const [serviceName, serviceConfig] of Object.entries(services)) {
+      const serviceResult = {
+        name: serviceName,
+        displayName: serviceConfig.displayName,
+        status: 'unknown',
+        responseTime: null,
+        database: null,
+        error: null
+      };
+
+      results.summary.totalServices++;
+
+      try {
+        let url = null;
+        let timeout = 5000;
+
+        if (env === 'dev' && serviceConfig.dev.localPort) {
+          url = `http://localhost:${serviceConfig.dev.localPort}/health/db`;
+        } else if (env === 'prod' && serviceConfig.prod.awsUrl) {
+          url = `${serviceConfig.prod.awsUrl}/health/db`;
+          timeout = 10000;
+        }
+
+        if (url) {
+          const startTime = Date.now();
+          const response = await axios.get(url, { timeout });
+          serviceResult.responseTime = Date.now() - startTime;
+
+          if (response.status === 200 && response.data.status === 'healthy') {
+            serviceResult.status = 'healthy';
+            serviceResult.database = response.data.database;
+            results.summary.healthyServices++;
+          } else {
+            serviceResult.status = 'unhealthy';
+            serviceResult.error = response.data.error || 'Unknown error';
+          }
+        } else {
+          serviceResult.status = 'not_configured';
+        }
+      } catch (error) {
+        serviceResult.status = 'unhealthy';
+        if (error.response) {
+          serviceResult.error = error.response.data?.error || `HTTP ${error.response.status}`;
+        } else {
+          serviceResult.error = error.code || error.message;
+        }
+      }
+
+      results.services[serviceName] = serviceResult;
+    }
+
+    results.summary.allHealthy = results.summary.healthyServices === results.summary.totalServices;
+    return results;
+  }
+
+  /**
+   * Check service DB health for all environments
+   */
+  async checkAllServiceDbHealth() {
+    return {
+      dev: await this.checkServiceDbHealth('dev'),
+      prod: await this.checkServiceDbHealth('prod'),
+      timestamp: new Date().toISOString()
     };
   }
 }

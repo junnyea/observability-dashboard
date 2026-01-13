@@ -1,12 +1,14 @@
-const AUTH_TOKEN = 'obv-dashboard-token-2024';
+const { getAuthToken } = require('../routes/auth');
 
 function setupLogSocket(io, logTailer) {
   const logNamespace = io.of('/logs');
 
-  // Auth middleware for WebSocket
-  logNamespace.use((socket, next) => {
+  // Auth middleware for WebSocket (async to fetch token from DB)
+  logNamespace.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
-    if (token === AUTH_TOKEN) {
+    const authToken = await getAuthToken();
+
+    if (token && token === authToken) {
       next();
     } else {
       next(new Error('Unauthorized'));
@@ -73,10 +75,12 @@ function setupLogSocket(io, logTailer) {
 function setupHealthSocket(io, healthMonitor) {
   const healthNamespace = io.of('/health');
 
-  // Auth middleware for WebSocket
-  healthNamespace.use((socket, next) => {
+  // Auth middleware for WebSocket (async to fetch token from DB)
+  healthNamespace.use(async (socket, next) => {
     const token = socket.handshake.auth?.token;
-    if (token === AUTH_TOKEN) {
+    const authToken = await getAuthToken();
+
+    if (token && token === authToken) {
       next();
     } else {
       next(new Error('Unauthorized'));

@@ -1,11 +1,11 @@
 const { Pool } = require('pg');
-const { getDatabase, getEnvironment, Environment } = require('../config/environments');
+const { getDatabase, getDatabaseSync, Environment } = require('../config/environments');
 
 // Pool instances for each environment
 const pools = {};
 
 const createPool = (dbConfig) => {
-  if (!dbConfig.host || !dbConfig.database) {
+  if (!dbConfig || !dbConfig.host || !dbConfig.database) {
     return null;
   }
 
@@ -27,20 +27,37 @@ const createPool = (dbConfig) => {
   return pool;
 };
 
-const getPool = (env = null) => {
-  const targetEnv = env || getEnvironment();
+/**
+ * Get pool for environment (async - loads credentials from DB)
+ */
+const getPool = async (env = 'dev') => {
+  const targetEnv = env.toLowerCase();
 
   if (!pools[targetEnv]) {
-    const dbConfig = getDatabase(targetEnv);
+    const dbConfig = await getDatabase(targetEnv);
     pools[targetEnv] = createPool(dbConfig);
   }
 
   return pools[targetEnv];
 };
 
-const testConnection = async (env = null) => {
-  const targetEnv = env || getEnvironment();
-  const pool = getPool(targetEnv);
+/**
+ * Get pool synchronously (uses cached or env var credentials)
+ */
+const getPoolSync = (env = 'dev') => {
+  const targetEnv = env.toLowerCase();
+
+  if (!pools[targetEnv]) {
+    const dbConfig = getDatabaseSync(targetEnv);
+    pools[targetEnv] = createPool(dbConfig);
+  }
+
+  return pools[targetEnv];
+};
+
+const testConnection = async (env = 'dev') => {
+  const targetEnv = env.toLowerCase();
+  const pool = await getPool(targetEnv);
 
   if (!pool) {
     return {
@@ -74,16 +91,16 @@ const getAllConnectionStatus = async () => {
   const results = {};
 
   for (const env of Object.values(Environment)) {
-    results[env] = await testConnection(env);
+    results[env.toLowerCase()] = await testConnection(env);
   }
 
   return results;
 };
 
-const query = async (text, params, env = null) => {
-  const pool = getPool(env);
+const query = async (text, params, env = 'dev') => {
+  const pool = await getPool(env);
   if (!pool) {
-    throw new Error(`Database not configured for environment: ${env || getEnvironment()}`);
+    throw new Error(`Database not configured for environment: ${env}`);
   }
   return pool.query(text, params);
 };
@@ -99,12 +116,13 @@ const closeAll = async () => {
 
 module.exports = {
   getPool,
+  getPoolSync,
   testConnection,
   getAllConnectionStatus,
   query,
   closeAll,
   // Legacy default pool support
   get pool() {
-    return getPool();
+    return getPoolSync();
   }
 };

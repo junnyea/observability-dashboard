@@ -107,3 +107,30 @@ export function useTopEndpoints() {
 
   return { data, loading }
 }
+
+export function useServiceDbHealth() {
+  const [data, setData] = useState({ dev: null, prod: null })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  const fetchDbHealth = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/health/service-db`)
+      setData(res.data)
+      setError(null)
+    } catch (err) {
+      setError(err.message)
+      console.error('Error fetching service DB health:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchDbHealth()
+    const interval = setInterval(fetchDbHealth, 10000) // Check every 10 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  return { data, loading, error, refetch: fetchDbHealth }
+}
