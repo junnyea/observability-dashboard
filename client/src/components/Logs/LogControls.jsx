@@ -1,11 +1,12 @@
 import { Play, Pause, Trash2, Search } from 'lucide-react'
 
-const SERVICES = ['config-svc', 'tenant-svc', 'checkin-svc']
+const SERVICES = ['config-svc', 'tenant-svc', 'checkin-svc', 'admin-svc']
 
 const serviceDisplayNames = {
   'config-svc': 'bw-config-svc-dev',
   'tenant-svc': 'bw-tenant-svc-dev',
-  'checkin-svc': 'bw-checkin-svc-dev'
+  'checkin-svc': 'bw-checkin-svc-dev',
+  'admin-svc': 'bw-admin-svc-dev'
 }
 
 function getServiceDisplayName(serviceName) {

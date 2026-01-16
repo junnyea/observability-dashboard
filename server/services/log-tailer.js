@@ -11,6 +11,12 @@ class LogTailer extends EventEmitter {
 
   start() {
     this.services.forEach(service => {
+      // Skip if no log file configured
+      if (!service.logFile) {
+        console.log(`No log file configured for: ${service.name}, skipping...`);
+        return;
+      }
+
       // Check if log file exists, create if not
       if (!fs.existsSync(service.logFile)) {
         console.log(`Log file not found: ${service.logFile}, waiting for it...`);

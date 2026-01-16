@@ -19,7 +19,7 @@ function setupLogSocket(io, logTailer) {
     console.log(`[WebSocket] Client connected to log stream: ${socket.id}`);
 
     // Track which services this client wants to see
-    socket.activeServices = new Set(['config-svc', 'tenant-svc', 'checkin-svc']);
+    socket.activeServices = new Set(['config-svc', 'tenant-svc', 'checkin-svc', 'admin-svc']);
     socket.filters = { search: '', level: 'all' };
 
     // Client subscribes to specific services

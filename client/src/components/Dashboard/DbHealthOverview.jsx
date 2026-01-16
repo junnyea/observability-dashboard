@@ -1,4 +1,4 @@
-import { Database, CheckCircle, XCircle, AlertTriangle, Settings, RefreshCw } from 'lucide-react'
+import { Database, CheckCircle, XCircle, AlertTriangle, Settings, RefreshCw, ExternalLink } from 'lucide-react'
 import { useEnv } from '../../context/EnvContext'
 
 function DbStatusBadge({ status, responseTime }) {
@@ -58,6 +58,17 @@ function DbServiceCard({ service }) {
           <div className="flex items-center gap-2 text-gray-600">
             <Database size={14} />
             <span>DB Connection</span>
+            {service?.url && (
+              <a
+                href={service.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-700 transition-colors"
+                title="Open health/db endpoint"
+              >
+                <ExternalLink size={14} />
+              </a>
+            )}
           </div>
           <DbStatusBadge status={service?.status} responseTime={service?.responseTime} />
         </div>
@@ -98,7 +109,7 @@ export default function DbHealthOverview({ dbHealth, loading }) {
         <h2 className="text-lg font-semibold text-gray-800 mb-4">
           Service to DB Health
           <span className={`ml-2 text-sm px-2 py-0.5 rounded ${
-            selectedEnv === 'DEV' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            'bg-blue-100 text-blue-700'
           }`}>
             {selectedEnv}
           </span>
@@ -120,7 +131,7 @@ export default function DbHealthOverview({ dbHealth, loading }) {
         <h2 className="text-lg font-semibold text-gray-800">
           Service to DB Health
           <span className={`ml-2 text-sm px-2 py-0.5 rounded ${
-            selectedEnv === 'DEV' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            'bg-blue-100 text-blue-700'
           }`}>
             {selectedEnv}
           </span>

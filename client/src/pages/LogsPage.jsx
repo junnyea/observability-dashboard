@@ -4,7 +4,7 @@ import LogViewer from '../components/Logs/LogViewer'
 import LogControls from '../components/Logs/LogControls'
 import { Wifi, WifiOff } from 'lucide-react'
 
-const SERVICES = ['config-svc', 'tenant-svc', 'checkin-svc']
+const SERVICES = ['config-svc', 'tenant-svc', 'checkin-svc', 'admin-svc']
 
 export default function LogsPage() {
   const { logs, connected, paused, subscribe, filter, clear, togglePause } = useLogStream()

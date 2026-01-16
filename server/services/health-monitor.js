@@ -461,7 +461,8 @@ class HealthMonitor {
         status: 'unknown',
         responseTime: null,
         database: null,
-        error: null
+        error: null,
+        url: null
       };
 
       results.summary.totalServices++;
@@ -470,7 +471,9 @@ class HealthMonitor {
         let url = null;
         let timeout = 5000;
 
-        if (env === 'dev' && serviceConfig.dev.localPort) {
+        if (env === 'dev' && serviceConfig.dev.awsUrl) {
+          url = `${serviceConfig.dev.awsUrl}/health/db`;
+        } else if (env === 'dev' && serviceConfig.dev.localPort) {
           url = `http://localhost:${serviceConfig.dev.localPort}/health/db`;
         } else if (env === 'prod' && serviceConfig.prod.awsUrl) {
           url = `${serviceConfig.prod.awsUrl}/health/db`;
@@ -478,6 +481,7 @@ class HealthMonitor {
         }
 
         if (url) {
+          serviceResult.url = url;
           const startTime = Date.now();
           const response = await axios.get(url, { timeout });
           serviceResult.responseTime = Date.now() - startTime;

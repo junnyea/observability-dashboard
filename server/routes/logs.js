@@ -15,8 +15,12 @@ router.get('/recent', async (req, res) => {
     for (const svc of config.services) {
       if (service && svc.name !== service) continue;
 
+      // Get log file from dev environment config
+      const logFile = svc.dev?.logFile;
+      if (!logFile) continue;
+
       try {
-        const content = fs.readFileSync(svc.logFile, 'utf8');
+        const content = fs.readFileSync(logFile, 'utf8');
         const logLines = content.split('\n').filter(line => line.trim());
         const recentLines = logLines.slice(-lines);
 
@@ -30,7 +34,7 @@ router.get('/recent', async (req, res) => {
           });
         });
       } catch (err) {
-        console.error(`Error reading ${svc.logFile}:`, err.message);
+        console.error(`Error reading ${logFile}:`, err.message);
       }
     }
 

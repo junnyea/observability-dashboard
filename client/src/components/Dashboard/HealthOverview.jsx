@@ -27,7 +27,7 @@ export default function HealthOverview({ services, uptime }) {
         <h2 className="text-lg font-semibold text-gray-800">
           Service Health
           <span className={`ml-2 text-sm px-2 py-0.5 rounded ${
-            selectedEnv === 'DEV' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            'bg-blue-100 text-blue-700'
           }`}>
             {selectedEnv}
           </span>

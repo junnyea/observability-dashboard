@@ -3,17 +3,17 @@ import { Globe, Database, ChevronDown, Check, AlertCircle } from 'lucide-react'
 import { getEnvironment, switchEnvironment, getDatabaseStatus } from '../../utils/api'
 
 const envColors = {
-  DEV: 'bg-green-100 text-green-800 border-green-300',
+  DEV: 'bg-blue-100 text-blue-800 border-blue-300',
   STAGING: 'bg-yellow-100 text-yellow-800 border-yellow-300',
   HOTFIX: 'bg-orange-100 text-orange-800 border-orange-300',
-  PROD: 'bg-red-100 text-red-800 border-red-300'
+  PROD: 'bg-purple-100 text-purple-800 border-purple-300'
 }
 
 const envBadgeColors = {
-  DEV: 'bg-green-500',
+  DEV: 'bg-blue-500',
   STAGING: 'bg-yellow-500',
   HOTFIX: 'bg-orange-500',
-  PROD: 'bg-red-500'
+  PROD: 'bg-purple-500'
 }
 
 export default function EnvironmentSwitcher({ onEnvironmentChange }) {

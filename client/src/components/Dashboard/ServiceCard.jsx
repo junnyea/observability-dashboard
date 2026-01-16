@@ -1,4 +1,4 @@
-import { CheckCircle, XCircle, Clock, Server, Cloud, AlertTriangle, Settings } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, Server, Cloud, AlertTriangle, Settings, ExternalLink } from 'lucide-react'
 
 function StatusBadge({ status, responseTime }) {
   const getStatusConfig = (status) => {
@@ -46,8 +46,8 @@ export default function ServiceCard({ service, envData, uptime, selectedEnv }) {
     }
   }
 
-  const hasLocal = envData?.local
   const hasAws = envData?.aws
+  const isDevEnv = selectedEnv === 'DEV'
 
   return (
     <div className={`p-5 rounded-xl border-2 transition-all ${getBorderColor(envData?.status)}`}>
@@ -60,30 +60,37 @@ export default function ServiceCard({ service, envData, uptime, selectedEnv }) {
       </div>
 
       <div className="space-y-3 text-sm">
-        {/* Local status (DEV only) */}
-        {hasLocal && (
-          <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-100">
-            <div className="flex items-center gap-2 text-gray-600">
-              <Server size={16} />
-              <span>Local :{envData.local.port}</span>
-            </div>
-            <StatusBadge status={envData.local.status} responseTime={envData.local.responseTime} />
-          </div>
-        )}
-
-        {/* AWS status */}
+        {/* Service status */}
         {hasAws && (
-          <div className="flex items-center justify-between p-2 bg-white rounded-lg border border-gray-100">
-            <div className="flex items-center gap-2 text-gray-600">
-              <Cloud size={16} />
-              <span>AWS {selectedEnv}</span>
+          <div className="p-2 bg-white rounded-lg border border-gray-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-gray-600">
+                {isDevEnv ? <Server size={16} /> : <Cloud size={16} />}
+                <span>{isDevEnv ? 'LOCAL DEV' : 'AWS PROD'}</span>
+              </div>
+              <StatusBadge status={envData.aws.status} responseTime={envData.aws.responseTime} />
             </div>
-            <StatusBadge status={envData.aws.status} responseTime={envData.aws.responseTime} />
+            {envData.aws.url && (
+              <a
+                href={`${envData.aws.url}/health`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 hover:underline transition-colors truncate"
+                title="Open health endpoint"
+              >
+                <ExternalLink size={12} />
+                <span className="truncate">
+                  {envData.aws.url.includes('qntailab.com')
+                    ? `${envData.aws.url.replace('https://', '').split('.')[0]}/health`
+                    : `${service.name}/health`}
+                </span>
+              </a>
+            )}
           </div>
         )}
 
         {/* No endpoints configured */}
-        {!hasLocal && (!hasAws || envData.aws.status === 'not_configured') && (
+        {(!hasAws || envData.aws.status === 'not_configured') && (
           <div className="text-center py-2 text-gray-400 text-xs">
             No endpoints configured for {selectedEnv}
           </div>
@@ -105,9 +112,9 @@ export default function ServiceCard({ service, envData, uptime, selectedEnv }) {
           </div>
         )}
 
-        {envData?.local?.lastCheck && (
+        {envData?.aws?.lastCheck && (
           <div className="text-xs text-gray-400 text-center">
-            Last check: {new Date(envData.local.lastCheck || envData.aws?.lastCheck).toLocaleTimeString()}
+            Last check: {new Date(envData.aws.lastCheck).toLocaleTimeString()}
           </div>
         )}
       </div>

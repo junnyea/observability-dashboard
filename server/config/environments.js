@@ -95,14 +95,14 @@ const getDatabaseSync = (env = 'dev') => {
   };
 };
 
-// Service definitions with DEV (local only) and PROD (AWS only)
+// Service definitions with DEV (LOCAL DEV) and PROD (AWS PROD) environments
 const services = {
   'config-svc': {
     name: 'config-svc',
     displayName: 'Config Service',
     dev: {
-      localPort: 5000,
-      awsUrl: null,
+      localPort: null,
+      awsUrl: 'https://bw-config-svc-dev.qntailab.com',
       logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/config-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/config-svc.log'
     },
     prod: {
@@ -115,8 +115,8 @@ const services = {
     name: 'tenant-svc',
     displayName: 'Tenant Service',
     dev: {
-      localPort: 5001,
-      awsUrl: null,
+      localPort: null,
+      awsUrl: 'https://bw-tenant-svc-dev.qntailab.com',
       logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/tenant-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/tenant-svc.log'
     },
     prod: {
@@ -129,13 +129,13 @@ const services = {
     name: 'checkin-svc',
     displayName: 'Checkin Service',
     dev: {
-      localPort: 5002,
-      awsUrl: null,
+      localPort: null,
+      awsUrl: 'https://bw-checkin-svc-dev.qntailab.com',
       logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/checkin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/checkin-svc.log'
     },
     prod: {
       localPort: null,
-      awsUrl: 'https://8etkilldgi.execute-api.ap-southeast-1.amazonaws.com/prod',
+      awsUrl: 'https://dgv8508o0f.execute-api.ap-southeast-1.amazonaws.com/prod',
       logFile: null
     }
   },
@@ -143,13 +143,13 @@ const services = {
     name: 'admin-svc',
     displayName: 'Admin Service',
     dev: {
-      localPort: 5003,
-      awsUrl: null,
+      localPort: null,
+      awsUrl: 'https://bw-admin-svc-dev.qntailab.com',
       logFile: process.env.LOG_DIR ? `${process.env.LOG_DIR}/admin-svc.log` : '/home/ubuntu/bulwark-stack-org/logs/admin-svc.log'
     },
     prod: {
       localPort: null,
-      awsUrl: 'https://wrr00ncfhf.execute-api.ap-southeast-1.amazonaws.com/prod',
+      awsUrl: 'https://na0wmpn07l.execute-api.ap-southeast-1.amazonaws.com/prod',
       logFile: null
     }
   }
